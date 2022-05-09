@@ -16,30 +16,30 @@
             <div v-on:click="onSearch">搜索</div>
           </template>
         </van-search>
+        <ul class="hot-key">
+          <li
+            v-for="(item, index) in hotWordsList"
+            v-bind:class="{ active: item === searchValue }"
+            v-on:click="handleHotkey(item)"
+            :key="index"
+          >
+            {{ item }}
+          </li>
+        </ul>
+        <ul class="nav">
+          <li class="bg" v-bind:style="{ left: navBgLeft }"></li>
+          <li
+            class="item"
+            v-for="(item, index) in nav.list"
+            v-bind:style="{ 'background-image': 'url(' + activeNav.icon + ')' }"
+            v-bind:class="{ active: nav.activeIndex === index }"
+            v-on:click="onNavChange(index)"
+            :key="index"
+          >
+            <span>{{ item.label }}</span>
+          </li>
+        </ul>
       </div>
-      <ul class="hot-key">
-        <li
-          v-for="(item, index) in hotWordsList"
-          v-bind:class="{ active: item === searchValue }"
-          v-on:click="handleHotkey(item)"
-          :key="index"
-        >
-          {{ item }}
-        </li>
-      </ul>
-      <ul class="nav">
-        <li class="bg" v-bind:style="{ left: navBgLeft }"></li>
-        <li
-          class="item"
-          v-for="(item, index) in nav.list"
-          v-bind:style="{ 'background-image': 'url(' + activeNav.icon + ')' }"
-          v-bind:class="{ active: nav.activeIndex === index }"
-          v-on:click="onNavChange(index)"
-          :key="index"
-        >
-          <span>{{ item.label }}</span>
-        </li>
-      </ul>
     </div>
 
     <div
