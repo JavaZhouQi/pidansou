@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // 创建一个 axios 实例
 const service = axios.create({
-	baseURL: 'https://pixiaodan.cn', // 所有的请求地址前缀部分
+	baseURL: 'http://nginx.pixiaodan.cn:2222', // 所有的请求地址前缀部分
 	timeout: 60000, // 请求超时时间毫秒
 	withCredentials: true, // 异步请求携带cookie
 	headers: {
