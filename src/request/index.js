@@ -1,8 +1,9 @@
 import axios from 'axios'
+import { Toast } from "vant";
 
 // 创建一个 axios 实例
 const service = axios.create({
-	baseURL: 'http://nginx.pixiaodan.cn:2222', // 所有的请求地址前缀部分
+	baseURL: 'https://nginx.pixiaodan.cn:81', // 所有的请求地址前缀部分
 	timeout: 60000, // 请求超时时间毫秒
 	withCredentials: true, // 异步请求携带cookie
 	headers: {
@@ -34,8 +35,9 @@ service.interceptors.response.use(
 		// 对响应数据做点什么
 		// dataAxios 是 axios 返回数据中的 data
 		const dataAxios = response.data
-		// 这个状态码是和后端约定的
-		const code = dataAxios.reset
+		if(dataAxios.code != 0){
+			Toast(dataAxios.msg);
+		}
 		return dataAxios
 	},
 	function (error) {

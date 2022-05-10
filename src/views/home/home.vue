@@ -6,20 +6,27 @@
     <div class="fixed-block max-width" key="fixed-block" ref="searchBox">
       <div class="search-box">
         <van-search
-          v-model="searchValue"
+          v-model="search.text"
           show-action
           placeholder="搜索更多优惠"
           clear-trigger="always"
           v-on:search="onSearch"
         >
           <template #action>
-            <div v-on:click="onSearch">搜索</div>
+            <div
+              v-on:click="
+                onSearch();
+                resetSearchResp();
+              "
+            >
+              搜索
+            </div>
           </template>
         </van-search>
         <ul class="hot-key">
           <li
             v-for="(item, index) in hotWordsList"
-            v-bind:class="{ active: item === searchValue }"
+            v-bind:class="{ active: item === search.text }"
             v-on:click="handleHotkey(item)"
             :key="index"
           >
@@ -31,9 +38,8 @@
           <li
             class="item"
             v-for="(item, index) in nav.list"
-            v-bind:style="{ 'background-image': 'url(' + activeNav.icon + ')' }"
             v-bind:class="{ active: nav.activeIndex === index }"
-            v-on:click="onNavChange(index)"
+            v-on:click="onNavChange(index, item)"
             :key="index"
           >
             <span>{{ item.label }}</span>
@@ -45,59 +51,63 @@
     <div
       class="page-content"
       ref="list"
-      v-bind:class="{ 'empty-list': !goodsList.length }"
+      v-bind:class="{ 'empty-list': searchResp.total > 0 }"
     >
       <div class="free-lists">
-        <template v-if="goodsList.length">
-          <div
-            class="goods-card heji"
-            v-for="(item, index) in goodsList"
-            :key="index"
-          >
-            <img :src="item.itempic" />
-            <div class="detail">
-              <div class="title">
-                <img class="icon" :src="item.itemIcon" alt="" />
-                <span>{{
-                  item.itemshorttitle ||
-                  item.itemtitle ||
-                  item.goodsnameshort ||
-                  item.goodsname
-                }}</span>
+        <div
+          class="goods-card heji"
+          v-for="(item, index) in searchResp.goodsList"
+          :key="index"
+        >
+          <img v-lazy="item.mainPic" />
+          <div class="detail">
+            <div class="title">
+              <img class="icon" :src="item.itemIcon" alt="" />
+              <span>{{ item.title }}</span>
+            </div>
+            <div class="center">
+              <div class="today-sale">
+                <i class="iconfont hdk-huo"></i>月销
+                {{ getMoneyStr(item.sales) }}
               </div>
-              <div class="center">
-                <div class="today-sale">
-                  <i class="iconfont hdk-huo"></i>月销
-                  {{ getMoneyStr(item.itemsale) }}
+            </div>
+            <div class="footer">
+              <div class="price has-share">
+                <div class="discount">
+                  券后价￥<strong>{{ Number(item.actualPrice) }}</strong>
                 </div>
+                <div class="origin">￥{{ item.itemprice }}</div>
               </div>
-              <div class="footer">
-                <div class="price has-share">
-                  <div class="discount">
-                    券后价￥<strong>{{ Number(item.itemendprice) }}</strong>
-                  </div>
-                  <div class="origin">￥{{ item.itemprice }}</div>
-                </div>
-                <div class="ticket" v-show="item.couponmoney != '0'">
-                  <span class="name">券</span
-                  ><span class="value">￥{{ item.couponmoney }}</span>
-                </div>
+              <div
+                class="ticket"
+                v-show="item.originalPrice != item.actualPrice"
+              >
+                <span class="name">券</span
+                ><span class="value"
+                  >￥{{
+                    parseInt(item.originalPrice) - parseInt(item.actualPrice)
+                  }}</span
+                >
               </div>
-              <div class="btn-block">
-                <div class="btn-share">
-                  <span class="operation">分享</span>
-                </div>
-                <div class="btn-order">
-                  <span class="operation">立即下单</span>
-                </div>
+            </div>
+            <div class="btn-block">
+              <div
+                class="btn-share"
+                v-on:click="toLink(item, 'copy')"
+                v-if="search.platform == 'tb'"
+              >
+                <span class="operation">复制淘口令</span>
+              </div>
+              <div class="btn-order" v-on:click="toLink(item, 'link')">
+                <span class="operation">领取优惠券</span>
               </div>
             </div>
           </div>
-          <div class="list-item-loading">
-            <span v-if="goodsList.length">没有更多商品了~</span
-            ><span v-else>数据正在赶来的路上...</span>
-          </div>
-        </template>
+        </div>
+        <div class="list-item-loading">
+          <span v-if="searchResp.isEnd">没有更多商品了~</span>
+          <span v-else>商品正在赶来的路上...</span>
+        </div>
       </div>
     </div>
   </div>
@@ -105,226 +115,114 @@
  
 <script>
 import http from "@/request/index";
+import useClipboard from "vue-clipboard3";
 import { Toast } from "vant";
 
 export default {
   data() {
     return {
-      searchValue: "",
       nav: {
         list: [
           {
-            icon: "http://img-haodanku-com.cdn.fudaiapp.com/Fr1M4Lza1oC0203z1EbW1ag1T9MW",
             label: "淘宝",
             value: "tb",
           },
           {
-            icon: "http://img-haodanku-com.cdn.fudaiapp.com/FmqPTcpihPdiVcZ-0Gia_Foq7rb5",
             label: "京东",
             value: "jd",
           },
           {
-            icon: "http://img-haodanku-com.cdn.fudaiapp.com/FnI_U9IfAmUtZs0OioDtypyY3ziR",
             label: "拼多多",
             value: "pdd",
           },
           {
-            icon: "http://img.bc.haodanku.com/cms/1627970015",
-            label: "唯品会",
-            value: "vph",
+            label: "抖音",
+            value: "dy",
           },
         ],
         activeIndex: 0,
       },
       banner: "http://img.bc.haodanku.com/cms/1627972539",
+      search: {
+        page: 1,
+        pageSize: 30,
+        text: "皮蛋",
+        platform: "tb",
+      },
       hotWordsList: [],
-      goodsList: [
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-        {
-          skuid: 10041123838843,
-          goodsname: "可心柔V9婴儿抽纸柔纸巾3层40抽5包",
-          itemprice: 9.9,
-          itemendprice: 9.9,
-          quota: 0,
-          itemsale: 250618,
-          shoptype: 0,
-          couponurl: "",
-          bind_type: null,
-          couponmoney: 0,
-          couponstarttime: 0,
-          couponendtime: 0,
-          commission: 1.98,
-          commissionshare: 20,
-          is_best: null,
-          itempic:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg",
-          jd_image:
-            "https://img14.360buyimg.com/pop/jfs/t1/168804/20/26455/101616/619f3fefE9ff93021/6891837b81df7789.jpg,https://img14.360buyimg.com/pop/jfs/t1/138755/28/22499/101616/619f3ff4E6827b5b2/36ef490c480dc4db.jpg,https://img14.360buyimg.com/pop/jfs/t1/187754/10/2061/162441/60964c6bE37adc42c/4a2bba3d1740d412.jpg,https://img14.360buyimg.com/pop/jfs/t1/189278/32/2064/97255/60964c67E868e03c6/1be8f2cb5a3f6115.jpg,https://img14.360buyimg.com/pop/jfs/t1/181126/8/2932/120730/60964c63E900fbed9/c829e43fdb085a1d.jpg,https://img14.360buyimg.com/pop/jfs/t1/187085/38/2104/71023/60964c70E9ad1a120/f268658162217fdd.jpg,https://img14.360buyimg.com/pop/jfs/t1/172211/32/21575/101616/619f3fffE948e98d7/149729ee5d191e0c.jpg",
-          shopname: "可心柔纸业旗舰店",
-          item_info: "jd",
-        },
-      ],
+      searchResp: {
+        total: 0,
+        goodsList: [],
+        isEnd: false,
+      },
     };
   },
   created() {
     http.get("/three/goods/hot/words").then((res) => {
       this.hotWordsList = res.data;
     });
+    this.onSearch();
   },
   methods: {
     onSearch: function () {
-      console.log(this.searchValue);
-      Toast(this.searchValue);
+      if (this.search.platform == "dy") {
+        this.resetSearchResp(true);
+        Toast.fail("抖音搜索皮蛋还在努力开发中...");
+        return;
+      }
+      http.post("/three/goods/search", this.search).then((res) => {
+        this.searchResp.goodsList = res.data.goodsInfoList;
+        this.searchResp.total = res.data.total;
+        this.searchResp.isEnd =
+          res.data.total == 0 ||
+          this.search.page * this.search.pageSize > res.data.total;
+      });
+    },
+    resetSearchResp: function (isEnd) {
+      this.searchResp = {
+        total: 0,
+        goodsList: [],
+        isEnd: isEnd,
+      };
     },
     handleHotkey: function (hotkey) {
-      this.searchValue = hotkey;
+      this.resetSearchResp();
+      this.search.text = hotkey;
       this.onSearch();
     },
-    onNavChange: function (index) {
+    onNavChange: function (index, item) {
+      this.resetSearchResp();
       this.nav.activeIndex = index;
+      this.search.platform = item.value;
       this.onSearch();
     },
     getMoneyStr: function (num) {
+      if (isNaN(num)) {
+        return num;
+      }
       var w = 10000;
       if (num < w) return num;
-      return (num / w).toFixed(2) + "万";
+      return (num / w).toFixed(2) + "万+";
+    },
+    toLink: function (item, type) {
+      http
+        .post("/three/goods/turn/link", {
+          goodsId: item.goodsId,
+          platform: this.search.platform,
+        })
+        .then((res) => {
+          if (type === "copy") {
+            const { toClipboard } = useClipboard();
+            try {
+              toClipboard(res.data.tpwd);
+              Toast.success("复制淘口令成功，请打开淘宝领取");
+            } catch (e) {
+              Toast.fail(e);
+            }
+          } else {
+            window.location.href = res.data.shortUrl;
+          }
+        });
     },
   },
   computed: {
